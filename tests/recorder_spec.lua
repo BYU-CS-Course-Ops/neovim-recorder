@@ -416,6 +416,53 @@ T.describe('recorder: eligibility', function()
         teardown()
     end)
 
+    T.it('canonicalises away redundant path segments', function()
+        local dir = T.temp_dir()
+        vim.fn.mkdir(dir .. '/sub', 'p')
+        T.assert_equal(
+            recorder._canonical_dir(dir),
+            recorder._canonical_dir(dir .. '/sub/..'),
+            'a .. segment must resolve to the same root'
+        )
+    end)
+
+    T.it('canonicalises a file whose parent exists but which does not', function()
+        local dir = T.temp_dir()
+        T.assert_equal(
+            recorder._canonical_dir(dir) .. '/brand-new.py',
+            recorder._canonical_file(dir .. '/brand-new.py'),
+            'a not-yet-created file must still canonicalise under its root'
+        )
+    end)
+
+    T.it('records through a symlinked root', function()
+        -- This is the macOS failure in miniature: /var is a symlink to
+        -- /private/var, so a root and its own files arrive spelled differently.
+        local base = T.temp_dir()
+        local real = base .. '/real'
+        local link = base .. '/link'
+        vim.fn.mkdir(real, 'p')
+        if not vim.uv.fs_symlink(real, link, { dir = true }) then
+            return -- Windows without developer mode; the CI matrix covers this.
+        end
+
+        if recorder.is_recording() then
+            recorder.stop()
+        end
+        config.setup({ roots = { link }, notify = false, resume_prompt = false })
+        intercept()
+        recorder.start()
+
+        -- Opened through the real path while the root was given as the symlink.
+        local buf, path = open_file(real, 'prog.py', 'x\n')
+        vim.api.nvim_buf_set_text(buf, 0, 1, 0, 1, { 'y' })
+        recorder.flush()
+        local recorded = #lines_for(path) > 0
+
+        teardown()
+        T.assert_true(recorded, 'a symlinked root must still record')
+    end)
+
     T.it('never records its own output files', function()
         local dir = session()
         T.assert_false(recorder._should_record(vim.fn.bufadd(dir .. '/prog.recording.jsonl.gz')))

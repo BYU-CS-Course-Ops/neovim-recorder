@@ -102,7 +102,36 @@ M._buffer_text = buffer_text
 --------------------------------------------------------------------------------
 
 local function normalise(path)
-    return (path:gsub('\\', '/'))
+    return (path:gsub('\\', '/'):gsub('/+$', ''))
+end
+
+--- Canonicalises a directory: absolute, symlinks resolved, real on-disk case.
+---
+--- Comparing raw path strings is not enough, because the same directory reaches
+--- us under different spellings. macOS hands back `/var/folders/...` while the
+--- buffer resolves to `/private/var/folders/...`; Windows may supply an 8.3 short
+--- name (`RUNNER~1`) or different casing. Any of those makes a root fail to match
+--- its own files, so the recorder attaches to nothing and writes nothing while
+--- still reporting itself as recording.
+--- @param path string
+--- @return string
+local function canonical_dir(path)
+    local absolute = vim.fn.fnamemodify(path, ':p')
+    return normalise(vim.uv.fs_realpath(absolute) or absolute)
+end
+
+--- Canonicalises a file path.
+---
+--- Resolves the parent directory rather than the file itself: `fs_realpath` fails
+--- on a path that does not exist yet, and a buffer for a brand-new file must
+--- still canonicalise consistently with the roots.
+--- @param path string
+--- @return string
+local function canonical_file(path)
+    local absolute = vim.fn.fnamemodify(path, ':p')
+    local parent = vim.fn.fnamemodify(absolute, ':h')
+    local name = vim.fn.fnamemodify(absolute, ':t')
+    return canonical_dir(parent) .. '/' .. name
 end
 
 --- Reports whether `path` lives under one of the recorded workspace roots.
@@ -110,10 +139,9 @@ local function within_roots(path)
     if #state.roots == 0 then
         return false
     end
-    local target = normalise(path)
+    local target = canonical_file(path)
     for _, root in ipairs(state.roots) do
-        local prefix = normalise(root):gsub('/$', '')
-        if target == prefix or target:sub(1, #prefix + 1) == prefix .. '/' then
+        if target == root or target:sub(1, #root + 1) == root .. '/' then
             return true
         end
     end
@@ -159,6 +187,8 @@ local function should_record(buf)
 end
 
 M._should_record = should_record
+M._canonical_dir = canonical_dir
+M._canonical_file = canonical_file
 
 --- Builds the descriptor used for every event from a buffer.
 local function descriptor_for(buf)
@@ -493,17 +523,16 @@ end
 
 --- Resolves the workspace roots recording is confined to.
 ---
---- Every root is expanded to an absolute path. Buffer names always are, so a
---- root left relative (`'src'`) or written with a `~` would match nothing and the
---- recorder would silently record nothing at all — the worst way for this tool to
---- fail, because it looks like it is working.
+--- Roots are canonicalised the same way buffer paths are, so a root written
+--- relative (`'src'`), with a `~`, through a symlink, or in the wrong case still
+--- matches its own files.
 local function collect_roots()
     local configured = config.get().roots
     local roots = (configured and #configured > 0) and configured or { vim.fn.getcwd() }
 
     local resolved = {}
     for _, root in ipairs(roots) do
-        resolved[#resolved + 1] = vim.fn.fnamemodify(root, ':p')
+        resolved[#resolved + 1] = canonical_dir(root)
     end
     return resolved
 end
