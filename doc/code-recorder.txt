@@ -1,0 +1,153 @@
+*code-recorder.txt*   Record code changes for BYU CS course analysis
+
+==============================================================================
+CONTENTS                                                *code-recorder-contents*
+
+    1. Introduction .......................... |code-recorder-introduction|
+    2. Requirements .......................... |code-recorder-requirements|
+    3. Setup ................................. |code-recorder-setup|
+    4. Commands .............................. |code-recorder-commands|
+    5. Configuration ......................... |code-recorder-configuration|
+    6. Statusline ............................ |code-recorder-statusline|
+    7. Lua API ............................... |code-recorder-api|
+    8. Output format ......................... |code-recorder-format|
+
+==============================================================================
+1. INTRODUCTION                                     *code-recorder-introduction*
+
+code-recorder records the edits you make to source files so an instructor can
+review how a program was written. It records text changes only; it never
+captures your screen, keystrokes outside the buffer, or anything you type
+outside a tracked file.
+
+Edits are written to `{basename}.recording.jsonl.gz` next to the file being
+edited, in the schema shared with the BYU CS VS Code and JetBrains recorders.
+
+==============================================================================
+2. REQUIREMENTS                                     *code-recorder-requirements*
+
+Neovim 0.10 or newer. There are no other dependencies: the plugin includes its
+own gzip encoder, so no external `gzip` binary is required.
+
+==============================================================================
+3. SETUP                                                   *code-recorder-setup*
+
+Calling setup is optional. If nothing configures the plugin by the time Neovim
+finishes starting, the defaults are applied automatically.
+
+To configure it explicitly: >lua
+
+    require('code-recorder').setup({
+        auto_start = true,
+    })
+<
+==============================================================================
+4. COMMANDS                                             *code-recorder-commands*
+
+                                                          *:CodeRecorderStart*
+:CodeRecorderStart      Start recording.
+
+                                                           *:CodeRecorderStop*
+:CodeRecorderStop       Stop recording and flush pending events to disk.
+
+                                                         *:CodeRecorderToggle*
+:CodeRecorderToggle     Toggle recording.
+
+                                                         *:CodeRecorderStatus*
+:CodeRecorderStatus     Report whether recording is active, which directories
+                        are covered, and which documents have been edited.
+
+                                                          *:CodeRecorderFlush*
+:CodeRecorderFlush      Write pending events immediately instead of waiting for
+                        the idle timer.
+
+                                                            *:CodeRecorderLog*
+:CodeRecorderLog        Open the recorder's diagnostic log in a scratch buffer.
+
+==============================================================================
+5. CONFIGURATION                                   *code-recorder-configuration*
+
+All options, with their defaults: >lua
+
+    require('code-recorder').setup({
+        tracked_extensions = { '.py', '.h', '.hpp', '.cpp', '.java' },
+        batch_idle_ms = 1000,
+        auto_start = false,
+        resume_previous_session = true,
+        resume_prompt = 'select',
+        roots = nil,
+        notify = true,
+        log_level = vim.log.levels.INFO,
+    })
+<
+tracked_extensions ~
+    File extensions eligible for recording. Anything else is ignored even
+    while open. Replaces the default list rather than extending it.
+
+batch_idle_ms ~
+    How long the recorder waits after the last change before writing a batch.
+
+auto_start ~
+    Start recording when Neovim starts, regardless of the previous session.
+
+resume_previous_session ~
+    Resume recording if Neovim exited while recording was active.
+
+resume_prompt ~
+    What to do when a file with an existing recording is opened while the
+    recorder is stopped. `'select'` asks whether to resume, `'notify'` only
+    mentions it, and `false` disables the check.
+
+roots ~
+    Directories recording is confined to. When nil, the current working
+    directory is used and re-resolved on |DirChanged|.
+
+notify ~
+    Show a notification when recording starts and stops.
+
+log_level ~
+    Minimum |vim.log.levels| value recorded in the recorder log.
+
+==============================================================================
+6. STATUSLINE                                         *code-recorder-statusline*
+
+`require('code-recorder').statusline()` returns "REC", "REC*" while an edit is
+being captured, or "REC off". >lua
+
+    vim.o.statusline = "%f %=%{v:lua.require'code-recorder'.statusline()}"
+<
+The highlight groups *CodeRecorderActive*, *CodeRecorderInactive*, and
+*CodeRecorderFlash* are defined with `default = true`, so a colorscheme may
+override them. `require('code-recorder.status').highlight()` returns the group
+matching the current state.
+
+==============================================================================
+7. LUA API                                                   *code-recorder-api*
+
+require('code-recorder').start()          Start recording.
+require('code-recorder').stop()           Stop recording and flush.
+require('code-recorder').toggle()         Toggle recording.
+require('code-recorder').is_recording()   Returns a boolean.
+require('code-recorder').flush()          Write pending events now.
+require('code-recorder').status()         Returns a table describing state.
+require('code-recorder').statusline()     Returns the statusline string.
+
+==============================================================================
+8. OUTPUT FORMAT                                          *code-recorder-format*
+
+A recording is gzip-compressed JSON Lines. Each flushed batch is appended as its
+own gzip member; decoders read the concatenation as one stream.
+
+A file is recorded only once it has actually been edited. Opening a file and
+never touching it leaves no recording behind.
+
+Edit events carry `type`, `editor`, `recorderVersion`, `timestamp`, `document`,
+`offset`, `oldFragment`, and `newFragment`. Focus events carry `type`, `editor`,
+`recorderVersion`, `timestamp`, and `focused`.
+
+`offset` counts codepoints. Line endings are normalised to LF, and the recorded
+document always ends with a newline, both following Neovim's buffer model.
+
+See RECORDING_FORMAT.md in the repository for the full schema.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

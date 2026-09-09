@@ -1,0 +1,6 @@
+# Store text as LF regardless of the contributor's core.autocrlf setting.
+# The StyLua config enforces Unix line endings, and CI checks it.
+* text=auto eol=lf
+
+# Recordings are gzip; never touch them.
+*.gz binary

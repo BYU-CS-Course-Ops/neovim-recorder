@@ -1,0 +1,22 @@
+# Recorder output, in case a recording is ever made inside the repo
+*.recording.jsonl.gz
+
+# Test scratch
+tests/.out/
+.venv/
+venv/
+__pycache__/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Lua
+luac.out
+doc/tags
