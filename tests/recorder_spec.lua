@@ -119,6 +119,47 @@ end
 -- Tests
 --------------------------------------------------------------------------------
 
+T.describe('recorder: baseline', function()
+    T.it('records a single edit under a temp-dir root', function()
+        -- The simplest possible end-to-end path. When this fails, every other
+        -- recording test fails with it, so it dumps the state needed to tell
+        -- which link in the chain broke rather than leaving a wall of
+        -- indistinguishable failures.
+        local dir = session()
+        local buf, path = open_file(dir, 'diag.py', 'x\n')
+        local bufname = vim.api.nvim_buf_get_name(buf)
+        local eligible = recorder._should_record(buf)
+
+        vim.api.nvim_buf_set_text(buf, 0, 1, 0, 1, { 'y' })
+        recorder.flush()
+
+        local recorded = #lines_for(path) > 0
+        if not recorded then
+            local status = recorder.status()
+            for _, line in ipairs({
+                'nvim           : ' .. tostring(vim.version()),
+                'temp dir       : ' .. dir,
+                'buffer name    : ' .. bufname,
+                'canonical dir  : ' .. recorder._canonical_dir(dir),
+                'canonical file : ' .. recorder._canonical_file(bufname),
+                'roots          : ' .. table.concat(status.roots, ', '),
+                'should_record  : ' .. tostring(eligible),
+                'buftype        : ' .. vim.inspect(vim.bo[buf].buftype),
+                'buflisted      : ' .. tostring(vim.bo[buf].buflisted),
+                'loaded         : ' .. tostring(vim.api.nvim_buf_is_loaded(buf)),
+                'attached bufs  : ' .. tostring(status.attached),
+                'expected output: ' .. writer.recording_path(path),
+                'written paths  : ' .. table.concat(vim.tbl_keys(captured), ', '),
+            }) do
+                io.write('       ', line, '\n')
+            end
+        end
+
+        teardown()
+        T.assert_true(recorded, 'baseline single-edit recording must work')
+    end)
+end)
+
 T.describe('recorder: deferred recording', function()
     T.it('writes nothing for a file that is only opened', function()
         local dir = session()

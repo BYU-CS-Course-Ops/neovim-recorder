@@ -33,6 +33,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Report the Neovim version under test
+        run: nvim --version
+
       - name: Run the Lua suite
         run: nvim -l tests/run.lua
 
