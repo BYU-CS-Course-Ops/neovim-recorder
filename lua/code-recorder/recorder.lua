@@ -492,12 +492,20 @@ end
 --------------------------------------------------------------------------------
 
 --- Resolves the workspace roots recording is confined to.
+---
+--- Every root is expanded to an absolute path. Buffer names always are, so a
+--- root left relative (`'src'`) or written with a `~` would match nothing and the
+--- recorder would silently record nothing at all — the worst way for this tool to
+--- fail, because it looks like it is working.
 local function collect_roots()
     local configured = config.get().roots
-    if configured and #configured > 0 then
-        return vim.deepcopy(configured)
+    local roots = (configured and #configured > 0) and configured or { vim.fn.getcwd() }
+
+    local resolved = {}
+    for _, root in ipairs(roots) do
+        resolved[#resolved + 1] = vim.fn.fnamemodify(root, ':p')
     end
-    return { vim.fn.getcwd() }
+    return resolved
 end
 
 local function create_autocmds()

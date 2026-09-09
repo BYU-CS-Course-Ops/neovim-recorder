@@ -379,6 +379,43 @@ T.describe('recorder: eligibility', function()
         teardown()
     end)
 
+    T.it('resolves a relative root against the working directory', function()
+        -- A root left relative would never match an absolute buffer name, and the
+        -- recorder would quietly record nothing.
+        if recorder.is_recording() then
+            recorder.stop()
+        end
+        local dir = T.temp_dir()
+        local previous_cwd = vim.fn.getcwd()
+        vim.fn.chdir(dir)
+
+        config.setup({ roots = { '.' }, notify = false, resume_prompt = false })
+        intercept()
+        recorder.start()
+
+        local buf, path = open_file(dir, 'prog.py', 'x\n')
+        vim.api.nvim_buf_set_text(buf, 0, 1, 0, 1, { 'y' })
+        recorder.flush()
+        local recorded = #lines_for(path) > 0
+
+        teardown()
+        vim.fn.chdir(previous_cwd)
+        T.assert_true(recorded, 'a relative root must still record')
+    end)
+
+    T.it('expands a root written with a tilde', function()
+        config.setup({ roots = { '~' }, notify = false, resume_prompt = false })
+        if recorder.is_recording() then
+            recorder.stop()
+        end
+        intercept()
+        recorder.start()
+        for _, root in ipairs(recorder.status().roots) do
+            T.assert_false(root:find('~', 1, true) ~= nil, 'tilde must be expanded: ' .. root)
+        end
+        teardown()
+    end)
+
     T.it('never records its own output files', function()
         local dir = session()
         T.assert_false(recorder._should_record(vim.fn.bufadd(dir .. '/prog.recording.jsonl.gz')))
