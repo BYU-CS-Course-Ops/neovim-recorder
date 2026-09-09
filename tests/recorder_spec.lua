@@ -49,15 +49,22 @@ local function teardown()
 end
 
 --- Writes `contents` to `dir/name` and opens it.
+---
+--- Returns the buffer's own name rather than the path used to create the file.
+--- The two are not always the same string: macOS resolves `/var` to
+--- `/private/var`, Windows may report an 8.3 short name, and Neovim normalises
+--- separators. The recorder derives its output path from the buffer name, so
+--- that is what a test must look up.
 --- @return integer buf
---- @return string path
+--- @return string path The buffer's name, as the recorder sees it.
 local function open_file(dir, name, contents)
     local path = dir .. '/' .. name
     local handle = assert(io.open(path, 'wb'))
     handle:write(contents)
     handle:close()
     vim.cmd.edit(vim.fn.fnameescape(path))
-    return vim.api.nvim_get_current_buf(), path
+    local buf = vim.api.nvim_get_current_buf()
+    return buf, vim.api.nvim_buf_get_name(buf)
 end
 
 local function lines_for(path)
@@ -217,7 +224,17 @@ T.describe('recorder: event shape', function()
         recorder.flush()
 
         local document = events_for(path)[1].document
-        T.assert_equal(vim.fs.normalize(path), vim.fs.normalize(document))
+        local normalised = vim.fs.normalize(document)
+        -- Absolute, either POSIX (/…) or Windows (C:/…).
+        T.assert_true(
+            normalised:match('^/') ~= nil or normalised:match('^%a:/') ~= nil,
+            'document must be an absolute path, got ' .. normalised
+        )
+        T.assert_match('prog%.py$', normalised)
+        T.assert_equal(
+            recorder._canonical_dir(dir) .. '/prog.py',
+            recorder._canonical_file(document)
+        )
         teardown()
     end)
 end)
